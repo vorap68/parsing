@@ -1,50 +1,78 @@
 <?php
 
-require_once 'function.php';
+$to = "dima@jinn.com.ua";
+$subject = "The new themes";
+$headers = 'Content-type: text/html; charset=utf-8';
+$header .= "From:dima@jinn.com.ua \r\n";
+$header .= "MIME-Version: 1.0\r\n";
+$header .= "Content-type: text/html\r\n";
 require_once 'phpQuery/phpQuery/phpQuery.php';
+spl_autoload_register(function($class) {
+    $path = str_replace('\\', '/', $class . '.php');
+    if (file_exists($path)) {
+	require $path;
+    }
+});
 
-function curlOut($url){
-    $curl = curl_init();
-    curl_setopt($curl,CURLOPT_URL, $url);
-    curl_setopt($curl, CURLOPT_FOLLOWLOCATION,1);
-    curl_setopt($curl,CURLOPT_RETURNTRANSFER, 1);
-    return curl_exec($curl);
+
+$pdo = new Db;
+$curl = new Parser;
+$curl->set(CURLOPT_FOLLOWLOCATION, 1);
+
+// Парсинг ссылок с начальной страницы и запись их в БД
+function parserPages($url, $curl, $pdo) {
+    $result = $curl->exec($url);
+    $pq = phpQuery::newDocument($result);
+    foreach ($pq->find('.titleline .forumtitle a') as $value) {
+	$pqHref = pq($value);
+	$href = $pqHref->attr('href');
+	$sql = "INSERT INTO `links` SET `link`=:link ";
+	if (!$pdo->insLink($sql, $href))
+	    echo "Вставка в БД не сработала";
+    }
 }
 
-function linkin($url,$pdo){
-$result =  curlOut($url);
-$pq = phpQuery::newDocument($result);
-$linksFind = $pq->find('a');
-$mainFind = $pq->find('#main p');
-$mainText = $mainFind->text();
-echo $url.'<br>';
-$sql = "UPDATE `links` SET  `content`=:content  WHERE `link`=:link";
-$stmt = $pdo->prepare($sql);
-$stmt->execute(array('link'=>$url,'content'=>$mainText));
-$link=[];
-foreach ($linksFind as $link){
-    $pqLink = pq($link);
-    $linkHref = $pqLink->attr('href');
-    //echo $linkHref;
-    $sql = "INSERT INTO `links` SET `link`=:link";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute(array('link'=>'http://old.code.mu/exercises/advanced/php/parsing/poetapnyj-parsing-i-metod-pauka/2/'.$linkHref));
-}
-return ;
+$urlFirst = 'http://www.html.by/';
+
+parserPages($urlFirst, $curl, $pdo);
+$stmt = $pdo->query(); //получение ссылок  главной стр из БД
+
+while ($temp = $stmt->fetch()) {
+    $url = 'html.by/' . $temp['link'];
+    $start = 0;
+    $end = 5; //предельное число страниц пагинации
+    parserOnePage($url, $curl, $start, $end, $pdo, $to, $subject, $header);
 }
 
-$linksCurrent = $pdo->prepare("SELECT `link` FROM `links`");
-$linksCurrent->execute();
-$arrLink=[];
-//var_dump($arrLink);
+function parserOnePage($url, $curl, $start, $end, $pdo, $to, $subject, $header) {
+    if ($end > $start) {
+	$result = $curl->exec($url);
+	$pq = phpQuery::newDocument($result);
+	foreach ($pq->find('.inner') as $value) {
+	    $pqValue = pq($value);
+	    $date = $pqValue->find('.author .label a')->attr('title');
+	    $date = substr($date, -16);
+	    $timestamp = strtotime($date);
+	    if ((time() - $timestamp) < 6246400) {
+		$message = $pqValue->find('.threadtitle a')->text();
+		// echo "fresh date:&nbsp" . $date . "&nbsp текст:$message<hr>";
+		$retval = mail($to, $subject, $message, $header);
 
- while($row = $linksCurrent->fetchColumn()){
-    $linkCurrent = 'http://old.code.mu/exercises/advanced/php/parsing/poetapnyj-parsing-i-metod-pauka/2/'.$row;
-    //echo $linkCurrent.'<br>';
-    linkin($linkCurrent, $pdo);
+		if ($retval == true) {
+		    echo "Message sent successfully...";
+		} else {
+		    echo "Message could not be sent...";
+		}
+	    }
+	}
+
+	// Ссылка на след страницу пагинации
+	$next = 'html.by/' . $pq->find('.threadpagenav .selected')->next()->find('a')->attr('href');
+
+	//проверка счетчика(ограничителя страниц) пагинации
+	if (!empty($next)) {
+	    $start++;
+	    parserOnePage($next, $curl, $start, $end, $pdo, $to, $subject, $header);
+	}
+    }
 }
- 
-$url ='http://old.code.mu/exercises/advanced/php/parsing/poetapnyj-parsing-i-metod-pauka/2/index1.php';
- 
- linkin($url,$pdo);
-
