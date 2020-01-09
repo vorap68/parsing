@@ -1,9 +1,9 @@
 <?php
 
-$to = "dima@jinn.com.ua";
+$to = "user@com.ua";
 $subject = "The new themes";
 $headers = 'Content-type: text/html; charset=utf-8';
-$header .= "From:dima@jinn.com.ua \r\n";
+$header .= "From:user@com.ua \r\n";
 $header .= "MIME-Version: 1.0\r\n";
 $header .= "Content-type: text/html\r\n";
 require_once 'phpQuery/phpQuery/phpQuery.php';
